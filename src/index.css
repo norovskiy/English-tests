@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 min-h-screen text-white;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Мобильная оптимизация */
+  @media (max-width: 640px) {
+    body {
+      font-size: 14px;
+    }
+    
+    button, a, [role="button"] {
+      touch-action: manipulation;
+      cursor: pointer;
+    }
+    
+    input, textarea, select {
+      font-size: 16px !important;
+    }
+  }
+  
+  /* Кастомный скроллбар */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-800 rounded;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gradient-to-b from-purple-500 to-pink-500 rounded;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 shadow-xl;
+  }
+  
+  .btn-primary {
+    @apply relative overflow-hidden bg-gradient-to-r from-purple-500 to-pink-500 
+           text-white font-semibold px-6 py-3 rounded-xl transition-all duration-200
+           active:scale-95 disabled:opacity-50;
+  }
+  
+  .btn-secondary {
+    @apply bg-white/10 backdrop-blur-sm text-white px-5 py-2.5 rounded-xl
+           border border-white/20 active:scale-95 transition-all duration-200;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl
+           text-white placeholder-white/50 focus:outline-none focus:ring-2 
+           focus:ring-purple-500 focus:border-transparent transition-all duration-200;
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+  
+  @keyframes slideUp {
+    from { transform: translateY(50px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out;
+  }
+  
+  /* Для мобильных свайпов */
+  .swipe-area {
+    touch-action: pan-y pinch-zoom;
+  }
+}
