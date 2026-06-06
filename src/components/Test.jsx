@@ -8,11 +8,9 @@ function Test() {
   const navigate = useNavigate()
   const [questions, setQuestions] = useState([])
   const [answers, setAnswers] = useState({})
-  const [feedback, setFeedback] = useState({})
-  const [currentFeedback, setCurrentFeedback] = useState(null)
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [showAll, setShowAll] = useState(false)
-
+  const [showExplanations, setShowExplanations] = useState({})
+  const [submitted, setSubmitted] = useState(false)
+  
   useEffect(() => {
     loadAndShuffleQuestions()
   }, [level])
@@ -21,213 +19,271 @@ function Test() {
     const res = await axios.get('http://localhost:4000/api/questions')
     const levelQuestions = res.data.filter(q => q.level === level)
     const shuffled = [...levelQuestions].sort(() => 0.5 - Math.random())
-    setQuestions(shuffled.slice(0, 40))
+    setQuestions(shuffled.slice(0, 50))
     setAnswers({})
-    setFeedback({})
-    setCurrentIndex(0)
+    setShowExplanations({})
+    setSubmitted(false)
   }
 
-  const checkAnswer = (questionId, userAnswer, correctAnswer, explanation) => {
-    const isCorrect = userAnswer.toLowerCase().trim() === correctAnswer.toLowerCase().trim()
-    setFeedback({ ...feedback, [questionId]: { isCorrect, explanation } })
-    setCurrentFeedback({ id: questionId, isCorrect, explanation })
-    setTimeout(() => setCurrentFeedback(null), 2000)
-  }
-
-  const nextQuestion = () => {
-    if (currentIndex < questions.length - 1) {
-      setCurrentIndex(currentIndex + 1)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+  const handleAnswerChange = (questionId, value) => {
+    setAnswers({ ...answers, [questionId]: value })
+    if (showExplanations[questionId]) {
+      setShowExplanations({ ...showExplanations, [questionId]: false })
     }
   }
 
-  const prevQuestion = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    }
+  const checkSingleAnswer = (questionId, userAnswer, correctAnswer, explanation) => {
+    const isCorrect = userAnswer?.toLowerCase().trim() === correctAnswer.toLowerCase().trim()
+    setShowExplanations({
+      ...showExplanations,
+      [questionId]: { show: true, isCorrect, explanation, userAnswer, correctAnswer }
+    })
   }
 
-  const renderQuestion = (question) => {
-    const userAnswer = answers[question.id] || ''
-    
-    return (
-      <div className="space-y-3">
-        {question.image && (
-          <div className="mb-3">
-            <img src={question.image} alt="Question" className="rounded-xl max-h-48 w-full object-cover" />
-          </div>
-        )}
-        
-        {question.type === 'multiple' ? (
-          <div className="grid gap-2">
-            {question.options.map(opt => (
-              <label key={opt} className="flex items-center space-x-3 p-3 bg-white/5 rounded-xl active:bg-white/10 cursor-pointer transition">
-                <input
-                  type="radio"
-                  name={`q${question.id}`}
-                  value={opt}
-                  onChange={(e) => {
-                    setAnswers({...answers, [question.id]: e.target.value})
-                    checkAnswer(question.id, e.target.value, question.correct, question.explanation)
-                  }}
-                  checked={userAnswer === opt}
-                  className="w-5 h-5 text-purple-500"
-                />
-                <span className="text-white/90 text-sm sm:text-base">{opt}</span>
-              </label>
-            ))}
-          </div>
-        ) : question.type === 'writing' ? (
-          <textarea
-            className="input-field mt-2"
-            rows={4}
-            value={userAnswer}
-            onChange={(e) => setAnswers({...answers, [question.id]: e.target.value})}
-            onBlur={(e) => {
-              if (e.target.value.trim()) {
-                checkAnswer(question.id, e.target.value, question.correct, question.explanation)
-              }
-            }}
-            placeholder="Напишите ответ здесь..."
-          />
-        ) : (
-          <input
-            type="text"
-            className="input-field mt-2"
-            value={userAnswer}
-            onChange={(e) => setAnswers({...answers, [question.id]: e.target.value})}
-            onBlur={(e) => {
-              if (e.target.value.trim()) {
-                checkAnswer(question.id, e.target.value, question.correct, question.explanation)
-              }
-            }}
-            placeholder="Введите ответ..."
-          />
-        )}
-      </div>
-    )
+  const handleSubmitExam = () => {
+    const newExplanations = {}
+    questions.forEach(q => {
+      const userAnswer = answers[q.id]
+      let isCorrect = false
+      
+      if (q.type === 'cloze_options' || q.type === 'cloze_no_options') {
+        const userAnswers = userAnswer?.toLowerCase().split(',').map(a => a.trim())
+        const correctAnswers = q.correct.toLowerCase().split(',').map(a => a.trim())
+        isCorrect = JSON.stringify(userAnswers) === JSON.stringify(correctAnswers)
+      } else {
+        isCorrect = userAnswer?.toLowerCase().trim() === q.correct.toLowerCase().trim()
+      }
+      
+      newExplanations[q.id] = {
+        show: true,
+        isCorrect: isCorrect || false,
+        explanation: q.explanation,
+        userAnswer: userAnswer || '(не отвечен)',
+        correctAnswer: q.correct
+      }
+    })
+    setShowExplanations(newExplanations)
+    setSubmitted(true)
   }
 
   const calculateResults = () => {
     let correct = 0
     questions.forEach(q => {
       const userAnswer = answers[q.id]
-      if (userAnswer && userAnswer.toLowerCase().trim() === q.correct.toLowerCase().trim()) correct++
+      let isCorrect = false
+      
+      if (q.type === 'cloze_options' || q.type === 'cloze_no_options') {
+        const userAnswers = userAnswer?.toLowerCase().split(',').map(a => a.trim())
+        const correctAnswers = q.correct.toLowerCase().split(',').map(a => a.trim())
+        isCorrect = JSON.stringify(userAnswers) === JSON.stringify(correctAnswers)
+      } else {
+        isCorrect = userAnswer?.toLowerCase().trim() === q.correct.toLowerCase().trim()
+      }
+      
+      if (isCorrect) correct++
     })
     const percentage = (correct / questions.length) * 100
     
     localStorage.setItem('testResults', JSON.stringify({
-      correct, total: questions.length, percentage, level,
-      questions: questions.map(q => ({
-        ...q,
-        userAnswer: answers[q.id] || '(не отвечен)',
-        isCorrect: answers[q.id]?.toLowerCase().trim() === q.correct.toLowerCase().trim()
-      }))
+      correct,
+      total: questions.length,
+      percentage,
+      level,
+      questions: questions.map(q => {
+        let isCorrect = false
+        const userAnswer = answers[q.id]
+        
+        if (q.type === 'cloze_options' || q.type === 'cloze_no_options') {
+          const userAnswers = userAnswer?.toLowerCase().split(',').map(a => a.trim())
+          const correctAnswers = q.correct.toLowerCase().split(',').map(a => a.trim())
+          isCorrect = JSON.stringify(userAnswers) === JSON.stringify(correctAnswers)
+        } else {
+          isCorrect = userAnswer?.toLowerCase().trim() === q.correct.toLowerCase().trim()
+        }
+        
+        return {
+          ...q,
+          userAnswer: answers[q.id] || '(не отвечен)',
+          isCorrect: isCorrect || false
+        }
+      })
     }))
+    
     navigate('/result')
   }
 
-  if (questions.length === 0) {
-    return <div className="min-h-screen flex items-center justify-center text-white">Загрузка...</div>
+  const getQuestionTypeLabel = (type) => {
+    const labels = {
+      multiple: '📝 Выберите ответ',
+      spelling: '✍️ Напишите слово',
+      definition: '📖 Что это за слово?',
+      grammar: '📚 Грамматика',
+      cloze_options: '📄 Вставьте слова (с подсказками)',
+      cloze_no_options: '🎯 Вставьте слова (без подсказок)'
+    }
+    return labels[type] || '📝 Вопрос'
   }
 
-  const currentQ = questions[currentIndex]
-  const answeredCount = Object.keys(answers).length
-
-  // Мобильная версия - по одному вопросу
-  if (!showAll && window.innerWidth < 768) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
-        <div className="container mx-auto px-4 py-4">
-          <div className="glass-card p-5">
-            {/* Прогресс */}
-            <div className="mb-4">
-              <div className="flex justify-between text-sm text-white/70 mb-2">
-                <span>Вопрос {currentIndex + 1}/{questions.length}</span>
-                <span>Отвечено: {answeredCount}</span>
-              </div>
-              <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-300" 
-                     style={{ width: `${(answeredCount / questions.length) * 100}%` }} />
-              </div>
-            </div>
-
-            {/* Вопрос */}
-            <div className="mb-6">
-              <p className="text-white font-semibold mb-3">{currentIndex + 1}. {currentQ.text}</p>
-              {renderQuestion(currentQ)}
-            </div>
-
-            {/* Навигация */}
-            <div className="flex gap-3">
-              <button onClick={prevQuestion} disabled={currentIndex === 0}
-                className={`flex-1 py-3 rounded-xl font-semibold ${currentIndex === 0 ? 'bg-white/5 text-white/30' : 'bg-white/10 text-white active:scale-95'}`}>
-                ← Назад
-              </button>
-              {currentIndex < questions.length - 1 ? (
-                <button onClick={nextQuestion} className="flex-1 bg-purple-600 text-white py-3 rounded-xl font-semibold active:scale-95">
-                  Далее →
-                </button>
-              ) : (
-                <button onClick={calculateResults} className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-3 rounded-xl font-semibold active:scale-95">
-                  📊 Завершить
-                </button>
-              )}
-            </div>
-
-            {/* Кнопка показа всех вопросов */}
-            <button onClick={() => setShowAll(true)} className="w-full mt-4 text-center text-white/50 text-sm py-2">
-              Показать все вопросы
-            </button>
-          </div>
+  const renderQuestion = (question) => {
+    const userAnswer = answers[question.id] || ''
+    const explanation = showExplanations[question.id]
+    
+    if (question.type === 'multiple') {
+      return (
+        <div className="space-y-2 mt-3">
+          {question.options.map(opt => (
+            <label key={opt} className="flex items-center space-x-3 p-3 bg-orange-50 rounded-xl hover:bg-orange-100 cursor-pointer transition">
+              <input
+                type="radio"
+                name={`q${question.id}`}
+                value={opt}
+                onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+                checked={userAnswer === opt}
+                className="w-5 h-5 text-orange-500"
+                disabled={submitted}
+              />
+              <span className="text-gray-800">{opt}</span>
+            </label>
+          ))}
         </div>
-
-        <AnimatePresence>
-          {currentFeedback && (
-            <motion.div className="fixed bottom-5 left-4 right-4 p-3 rounded-xl text-center text-white text-sm"
-              initial={{ y: 100, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 100, opacity: 0 }}
-              style={{ background: currentFeedback.isCorrect ? '#22c55e' : '#ef4444' }}>
-              {currentFeedback.explanation}
-            </motion.div>
-          )}
-        </AnimatePresence>
+      )
+    }
+    
+    if (question.type === 'cloze_options' || question.type === 'cloze_no_options') {
+      return (
+        <div className="mt-3">
+          <div className="bg-orange-50 p-4 rounded-xl mb-3">
+            <p className="text-gray-800 leading-relaxed whitespace-pre-line">{question.text}</p>
+          </div>
+          <textarea
+            className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+            rows={4}
+            value={userAnswer}
+            onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+            placeholder="Введите пропущенные слова через запятую (например: went,was,had)"
+            disabled={submitted}
+          />
+          <p className="text-xs text-gray-500 mt-1">💡 Введите слова через запятую в правильном порядке</p>
+        </div>
+      )
+    }
+    
+    return (
+      <div className="mt-3">
+        <input
+          type="text"
+          className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          value={userAnswer}
+          onChange={(e) => handleAnswerChange(question.id, e.target.value)}
+          placeholder="Введите ваш ответ здесь..."
+          disabled={submitted}
+        />
       </div>
     )
   }
 
-  // Десктоп/планшет версия - все вопросы
+  if (questions.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-gray-600 text-xl">Загрузка вопросов...</div>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 pb-20">
-      <div className="container mx-auto px-4 py-4">
-        <div className="glass-card p-5 max-w-4xl mx-auto">
-          <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-            <h1 className="text-xl font-bold text-white">Тест: {level}</h1>
-            <div className="flex gap-2">
-              <button onClick={loadAndShuffleQuestions} className="btn-secondary text-sm px-3 py-1.5">🔄 Новые</button>
-              <button onClick={() => setShowAll(false)} className="btn-secondary text-sm px-3 py-1.5">📱 Моб. режим</button>
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50">
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-6 mb-6">
+            <div className="flex justify-between items-center flex-wrap gap-3">
+              <h1 className="text-2xl font-bold text-gray-800">📖 Тест: {level}</h1>
+              <div className="flex gap-3">
+                <button
+                  onClick={loadAndShuffleQuestions}
+                  className="px-4 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition"
+                >
+                  🔄 Новые вопросы
+                </button>
+                <button
+                  onClick={() => navigate('/')}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-xl hover:bg-gray-600 transition"
+                >
+                  🏠 Выход
+                </button>
+              </div>
             </div>
+            <div className="mt-3 h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-orange-500 to-rose-500 rounded-full transition-all duration-300"
+                style={{ width: `${(Object.keys(answers).length / questions.length) * 100}%` }}
+              />
+            </div>
+            <p className="text-sm text-gray-600 mt-2">Отвечено: {Object.keys(answers).length} / {questions.length}</p>
           </div>
 
-          <div className="space-y-5 max-h-[60vh] overflow-y-auto">
+          <div className="space-y-6">
             {questions.map((q, idx) => (
-              <div key={q.id} className="border-b border-white/10 pb-3">
-                <p className="text-white font-semibold mb-2 text-sm">{idx + 1}. {q.text}</p>
+              <div key={q.id} className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-semibold text-orange-500">{idx + 1}</span>
+                  <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full">
+                    {getQuestionTypeLabel(q.type)}
+                  </span>
+                </div>
+                <p className="font-semibold text-gray-800 text-lg mb-3">{q.text}</p>
+                
                 {renderQuestion(q)}
-                {feedback[q.id] && (
-                  <div className={`mt-2 p-2 rounded-lg text-xs ${feedback[q.id].isCorrect ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
-                    {feedback[q.id].explanation}
+                
+                {!submitted && answers[q.id] && !showExplanations[q.id] && (
+                  <button
+                    onClick={() => checkSingleAnswer(q.id, answers[q.id], q.correct, q.explanation)}
+                    className="mt-3 text-sm bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition"
+                  >
+                    Проверить ответ
+                  </button>
+                )}
+                
+                {showExplanations[q.id]?.show && (
+                  <div className={`mt-3 p-4 rounded-xl border ${
+                    showExplanations[q.id].isCorrect 
+                      ? 'bg-green-100 border-green-400' 
+                      : 'bg-red-100 border-red-400'
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      <span className="text-2xl">{showExplanations[q.id].isCorrect ? '✓' : '✗'}</span>
+                      <div>
+                        <p className="font-semibold text-gray-800">
+                          {showExplanations[q.id].isCorrect ? 'Правильно!' : 'Неправильно'}
+                        </p>
+                        {!showExplanations[q.id].isCorrect && (
+                          <p className="text-sm mt-1 text-green-700">
+                            Правильный ответ: <span className="font-bold">{showExplanations[q.id].correctAnswer}</span>
+                          </p>
+                        )}
+                        <p className="text-sm mt-1 text-gray-700">{showExplanations[q.id].explanation}</p>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
             ))}
           </div>
 
-          <button onClick={calculateResults} className="btn-primary w-full mt-5 py-3">
-            📊 Сдать ({answeredCount}/{questions.length})
-          </button>
+          {!submitted ? (
+            <button
+              onClick={handleSubmitExam}
+              className="w-full mt-8 bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold py-4 rounded-2xl text-lg shadow-lg hover:shadow-xl transition-all"
+            >
+              📊 Проверить все ответы
+            </button>
+          ) : (
+            <button
+              onClick={calculateResults}
+              className="w-full mt-8 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold py-4 rounded-2xl text-lg shadow-lg hover:shadow-xl transition-all"
+            >
+              🎯 Завершить экзамен и увидеть результат
+            </button>
+          )}
         </div>
       </div>
     </div>
